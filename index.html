@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI SECURITY OS - Final Fixed</title>
+    <style>
+        /* ================= CSS 变量与基础样式 ================= */
+        :root {
+            --bg-color: #eef2f3;
+            --glass-bg: rgba(255, 255, 255, 0.65);
+            --glass-border: rgba(255, 255, 255, 0.8);
+            --text-main: #333;
+            --text-sub: #555;
+            --card-bg: rgba(255, 255, 255, 0.45);
+            --btn-bg: rgba(255, 255, 255, 0.6);
+            --accent-color: #007aff;
+            --danger-color: #ff3b30;
+            --success-color: #34c759;
+            --shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+            --sidebar-width: 340px;
+        }
+
+        body.night-mode {
+            --bg-color: #050505;
+            --glass-bg: rgba(20, 20, 20, 0.85);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-main: #e0e0e0;
+            --text-sub: #aaaaaa;
+            --card-bg: rgba(40, 40, 40, 0.6);
+            --btn-bg: rgba(60, 60, 60, 0.6);
+            --accent-color: #0a84ff;
+            --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+        }
+
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; display: flex; flex-direction: row; height: 100vh; width: 100vw; background-color: var(--bg-color); transition: background 1s ease; }
+        #container-3d { flex: 1; height: 100%; position: relative; overflow: hidden; transition: filter 1s ease; min-width: 0; }
+        #panel-container { width: var(--sidebar-width); flex-shrink: 0; height: 100%; background: var(--glass-bg); backdrop-filter: blur(30px); border-left: 1px solid var(--glass-border); display: flex; flex-direction: column; box-shadow: -10px 0 40px rgba(0,0,0,0.1); color: var(--text-main); z-index: 30; }
+        #container-2d { flex: 0 0 220px; display: flex; justify-content: center; align-items: center; border-bottom: 1px solid var(--glass-border); padding-top: 10px; width: 100%; }
+        canvas#canvas-2d { background: rgba(255,255,255,0.15); border: 2px solid var(--glass-border); border-radius: 12px; }
+
+        @media (max-width: 900px) {
+            body { flex-direction: column; }
+            #container-3d { height: 60%; width: 100%; }
+            #panel-container { width: 100%; height: 40%; border-left: none; border-top: 1px solid var(--glass-border); }
+            #container-2d { display: none; }
+            .top-bar { padding: 0 10px; height: 50px; top: 10px; left: 10px; right: 10px; }
+            .weather-group, .right-group { width: auto; gap: 8px; }
+            .system-title { font-size: 16px; display: none; }
+            #ai-hud { width: 90%; bottom: 10px; }
+        }
+
+        /* UI 组件 */
+        .top-bar { position: absolute; top: 20px; left: 20px; right: 20px; height: 64px; display: flex; justify-content: space-between; align-items: center; padding: 0 30px; background: var(--glass-bg); backdrop-filter: blur(20px); border: 1px solid var(--glass-border); border-radius: 20px; box-shadow: var(--shadow); z-index: 20; color: var(--text-main); transition: all 0.5s ease; }
+        .weather-group { display: flex; align-items: center; gap: 15px; width: 320px; }
+        .weather-icon { font-size: 28px; }
+        .temp-text { font-size: 24px; font-weight: 700; }
+        .city-text { font-size: 13px; opacity: 0.8; display: flex; flex-direction: column; line-height: 1.2; font-family: 'Microsoft YaHei', sans-serif; }
+        .system-title { position: absolute; left: 50%; transform: translateX(-50%); font-size: 22px; font-weight: 900; letter-spacing: 4px; color: var(--accent-color); text-transform: uppercase; pointer-events: none; }
+        .right-group { display: flex; align-items: center; gap: 20px; width: 320px; justify-content: flex-end; }
+        .time-clock { font-size: 22px; font-weight: 700; font-family: monospace; letter-spacing: 1px; line-height: 1; }
+        .time-date { font-size: 12px; opacity: 0.7; font-weight: 600; text-align: right; letter-spacing: 1px; }
+        .theme-btn { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--glass-border); background: var(--btn-bg); display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 20px; color: var(--text-main); transition: 0.3s; }
+        .theme-btn:hover { background: var(--accent-color); color: #fff; transform: scale(1.1); }
+
+        #ai-hud { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: 500px; height: 60px; background: var(--glass-bg); backdrop-filter: blur(20px); border-radius: 30px; box-shadow: var(--shadow); border: 1px solid var(--glass-border); display: flex; align-items: center; padding: 0 25px; gap: 20px; z-index: 20; max-width: 90%; }
+        .ai-orb { width: 12px; height: 12px; border-radius: 50%; background: var(--accent-color); box-shadow: 0 0 15px var(--accent-color); animation: breathe 2s infinite; min-width: 12px; }
+        .ai-text { font-size: 14px; color: var(--text-main); font-weight: 600; letter-spacing: 0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        #controls { flex: 1; padding: 20px; overflow-y: auto; scrollbar-width: none; width: 100%; box-sizing: border-box; }
+        .card { background: var(--card-bg); border: 1px solid var(--glass-border); border-radius: 16px; padding: 15px; margin-bottom: 15px; transition: 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.02); }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 8px 15px rgba(0,0,0,0.05); }
+        .card-header { font-size: 12px; font-weight: 800; color: var(--text-sub); letter-spacing: 1px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+        .btn-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        button { border: 1px solid var(--glass-border); padding: 12px; border-radius: 10px; cursor: pointer; font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; transition: all 0.2s; color: var(--text-main); background: var(--btn-bg); }
+        button:hover { filter: brightness(1.1); transform: scale(1.02); }
+        button.active { background: rgba(0, 122, 255, 0.15); color: var(--accent-color); border-color: var(--accent-color); }
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; background: rgba(0,0,0,0.1); }
+        .status-badge.safe { color: var(--success-color); background: rgba(52, 199, 89, 0.15); }
+        .status-badge.danger { color: var(--danger-color); background: rgba(255, 59, 48, 0.15); }
+
+        #alarm-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(220, 38, 38, 0.2); backdrop-filter: blur(8px); z-index: 100; display: none; justify-content: center; align-items: center; animation: flash 0.8s infinite; }
+        .alarm-msg { color: white; font-size: 40px; font-weight: 900; letter-spacing: 5px; text-shadow: 0 0 30px red; text-align: center;}
+        @keyframes flash { 50% { opacity: 0.6; background: rgba(220, 38, 38, 0.4); } }
+        @keyframes breathe { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(0.9); } }
+        .env-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; color: var(--text-main); align-items: center; }
+        .val-text { font-family: monospace; font-weight: bold; }
+
+        /* ================= 修复：加载动画 CSS (恢复原版) ================= */
+        #loader { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #050505; z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.8s ease-out; }
+        .spinner-box { width: 300px; height: 300px; display: flex; justify-content: center; align-items: center; position: relative; }
+        .leo-border-1 { position: absolute; width: 150px; height: 150px; padding: 3px; display: flex; justify-content: center; align-items: center; border-radius: 50%; background: rgb(63,249,220); background: linear-gradient(0deg, rgba(63,249,220,0.1) 33%, rgba(63,249,220,1) 100%); animation: spin3D 1.8s linear 0s infinite; }
+        .leo-core-1 { width: 100%; height: 100%; background-color: #000; border-radius: 50%; }
+        .leo-border-2 { position: absolute; width: 150px; height: 150px; padding: 3px; display: flex; justify-content: center; align-items: center; border-radius: 50%; background: rgb(0, 122, 255); background: linear-gradient(0deg, rgba(0, 122, 255, 0.1) 33%, rgba(0, 122, 255, 1) 100%); animation: spin3D 2.2s linear 0s infinite; }
+        .leo-core-2 { width: 100%; height: 100%; background-color: #000; border-radius: 50%; }
+        .orbit { position: absolute; width: 120px; height: 120px; border: 2px solid #3ff9dc; border-radius: 50%; animation: pulse 2s infinite; opacity: 0.5; }
+        .loader-text { margin-top: 20px; color: #00d2ff; font-family: monospace; font-size: 16px; letter-spacing: 4px; font-weight: bold; text-shadow: 0 0 10px #00d2ff; }
+        @keyframes spin3D { 0% { transform: rotate3d(.5,.5,.5, 360deg); } 100% { transform: rotate3d(0deg); } }
+        @keyframes pulse { 0% { transform: scale(0.8); opacity: 0.3; } 50% { transform: scale(1.1); opacity: 0.8; } 100% { transform: scale(0.8); opacity: 0.3; } }
+
+        /* Modals */
+        .modal-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); z-index: 1000; display: none; justify-content: center; align-items: center; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .pin-box { background: var(--glass-bg); padding: 30px; border-radius: 20px; border: 1px solid var(--glass-border); box-shadow: 0 20px 50px rgba(0,0,0,0.5); display: flex; flex-direction: column; align-items: center; width: 280px; }
+        .pin-screen { width: 100%; height: 50px; background: rgba(0,0,0,0.1); border-radius: 10px; margin-bottom: 20px; display: flex; justify-content: center; align-items: center; font-size: 24px; letter-spacing: 10px; color: var(--text-main); font-family: monospace; }
+        .pin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+        .pin-btn { width: 60px; height: 60px; border-radius: 50%; border: 1px solid var(--glass-border); background: var(--btn-bg); color: var(--text-main); font-size: 20px; cursor: pointer; transition: 0.2s; }
+        .pin-btn:hover { background: var(--accent-color); color: white; transform: scale(1.1); }
+        .cctv-box { background: #000; border: 2px solid #333; border-radius: 10px; width: 80%; height: 80%; max-width: 800px; max-height: 600px; position: relative; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 0 50px rgba(0, 122, 255, 0.3); }
+        .cctv-header { padding: 10px; background: rgba(20,20,20,0.9); color: #00d2ff; font-family: monospace; display: flex; justify-content: space-between; }
+        .cctv-screen { flex: 1; background: url('https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExcDdtY2J6eXF6Ymx6Ymx6Ymx6Ymx6Ymx6Ymx6Ymx6Ymx6YmwmZXA9djFfaW50ZXJuYWxfZ2lmX2J5X2lkJmN0PWc/L1R1TVTh2ulx6/giphy.gif') center/cover no-repeat; position: relative; cursor: pointer; }
+        .cctv-overlay { position: absolute; top: 20px; left: 20px; color: red; font-family: monospace; font-weight: bold; animation: blink 1s infinite; }
+        .close-cctv { position: absolute; top: 10px; right: 10px; background: red; color: white; border: none; width: 30px; height: 30px; border-radius: 5px; cursor: pointer; z-index: 10; }
+        .cam-preview { width: 100%; height: 120px; background: url('https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExcDdtY2J6eXF6Ymx6Ymx6Ymx6Ymx6Ymx6Ymx6Ymx6Ymx6YmwmZXA9djFfaW50ZXJuYWxfZ2lmX2J5X2lkJmN0PWc/L1R1TVTh2ulx6/giphy.gif') center/cover no-repeat; border-radius: 10px; border: 1px solid var(--glass-border); margin-bottom: 10px; cursor: pointer; position: relative; overflow: hidden; }
+        .ac-info { font-size: 10px; color: var(--accent-color); margin-left: 5px; display: none; }
+        .active .ac-info { display: inline; }
+    </style>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/", "@tweenjs/tween.js": "https://unpkg.com/@tweenjs/tween.js@23.1.1/dist/tween.esm.js" } }
+    </script>
+</head>
+<body>
+
+    <!-- 修复：恢复原版 Loader 结构 -->
+    <div id="loader">
+        <div class="spinner-box">
+            <div class="leo-border-1"><div class="leo-core-1"></div></div>
+            <div class="leo-border-2"><div class="leo-core-2"></div></div>
+            <div class="orbit"></div>
+        </div>
+        <div class="loader-text">AI SECURITY OS INITIALIZING...</div>
+    </div>
+
+    <!-- Modals -->
+    <div id="pin-modal" class="modal-overlay">
+        <div class="pin-box">
+            <div style="color:var(--text-main); margin-bottom:15px; font-weight:bold;">请输入安全密码</div>
+            <div class="pin-screen" id="pin-display"></div>
+            <div class="pin-grid">
+                <button class="pin-btn" onclick="inputPin(1)">1</button><button class="pin-btn" onclick="inputPin(2)">2</button><button class="pin-btn" onclick="inputPin(3)">3</button>
+                <button class="pin-btn" onclick="inputPin(4)">4</button><button class="pin-btn" onclick="inputPin(5)">5</button><button class="pin-btn" onclick="inputPin(6)">6</button>
+                <button class="pin-btn" onclick="inputPin(7)">7</button><button class="pin-btn" onclick="inputPin(8)">8</button><button class="pin-btn" onclick="inputPin(9)">9</button>
+                <button class="pin-btn" onclick="cancelPin()" style="color:#ff3b30">✕</button>
+                <button class="pin-btn" onclick="inputPin(0)">0</button>
+                <button class="pin-btn" onclick="submitPin()" style="color:#34c759">✓</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="cctv-modal" class="modal-overlay">
+        <div class="cctv-box">
+            <button class="close-cctv" onclick="closeCCTV()">✕</button>
+            <div class="cctv-header"><span>CAM_01_LIVING_ROOM</span><span>● REC</span></div>
+            <div class="cctv-screen">
+                <div class="cctv-overlay">LIVE FEED</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div id="container-3d">
+        <div id="alarm-overlay"><div class="alarm-msg">⚠️ CRITICAL ALERT</div></div>
+        
+        <div class="top-bar">
+            <div class="weather-group">
+                <div class="weather-icon" id="w-icon">🛰️</div>
+                <div>
+                    <div class="temp-text" id="w-temp">--°C</div>
+                    <div class="city-text"><span id="w-city">卫星定位中...</span></div>
+                </div>
+            </div>
+            <div class="system-title">AI SECURITY OS</div>
+            <div class="right-group">
+                <div style="text-align:right; margin-right:15px">
+                    <div class="time-clock" id="clock-time">00:00:00</div>
+                    <div class="time-date" id="clock-date">--.--.--</div>
+                </div>
+                <div class="theme-btn" id="theme-btn" onclick="manualToggleTheme()">☀️</div>
+            </div>
+        </div>
+
+        <div id="ai-hud">
+            <div class="ai-orb" id="ai-orb"></div>
+            <div class="ai-text" id="ai-text">AI: 正在连接 OneNET 云平台...</div>
+        </div>
+    </div>
+
+    <div id="panel-container">
+        <div id="container-2d"><canvas id="canvas-2d" width="260" height="200"></canvas></div>
+        
+        <div id="controls">
+            <div class="card">
+                <div class="card-header">传感器监控 SENSORS</div>
+                <div class="env-row"><span>🌡️ 室内温度 (Temp)</span><span id="val-temp" class="val-text">--°C</span></div>
+                <div class="env-row"><span>💧 空气湿度 (Hum)</span><span id="val-hum" class="val-text">--%</span></div>
+                <div class="env-row"><span>🍃 空气质量 (MQ135)</span><span id="val-aqi" class="val-text" style="color:var(--success-color)">--</span></div>
+                <div class="env-row"><span>☁️ 烟雾浓度 (MQ2)</span><span id="val-smoke" class="val-text" style="color:var(--success-color)">0 ppm</span></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span>安防系统 SECURITY</span>
+                    <span id="lock-status" class="status-badge danger">大门已锁</span>
+                </div>
+                <div class="cam-preview" onclick="openCCTV()"></div>
+                
+                <div class="card-header" style="margin-top:10px">大门门锁 SMART LOCK</div>
+                <div class="btn-grid">
+                     <button onclick="handleLockAction()" id="btn-lock" style="background:rgba(255, 59, 48, 0.1); color:var(--danger-color); width:200%">🔒 大门门锁 (Doors1)</button>
+                </div>
+
+                <div class="card-header" style="margin-top:15px">室内门控 DOORS</div>
+                <div class="btn-grid" id="door-controls"></div>
+
+                <div class="card-header" style="margin-top:15px">智能窗户 WINDOWS</div>
+                <div class="btn-grid" style="margin-bottom:10px">
+                    <button onclick="toggleWindow('w_liv', undefined, true)" id="btn-w_liv">客厅窗 (Win1)</button>
+                    <button onclick="toggleWindow('w_bed', undefined, true)" id="btn-w_bed">卧室窗 (Win2)</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">环境空调 HVAC</div>
+                <div class="btn-grid" id="ac-controls"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">灯光控制 LIGHTS</div>
+                <div class="btn-grid" id="light-controls"></div>
+            </div>
+
+            <div class="card" style="border-color: rgba(245, 34, 45, 0.2); background: rgba(255, 0, 0, 0.05);">
+                <div class="card-header" style="color: #ff4d4f;">
+                    <span>紧急控制 EMERGENCY</span>
+                    <span class="status-badge safe" id="sys-status">安全</span>
+                </div>
+                <div class="btn-grid">
+                    <button onclick="triggerAlarm()" style="color:#ff4d4f; border-color:#ff4d4f; background:rgba(255,255,255,0.5)">🚨 模拟警报 (Alarm)</button>
+                    <button onclick="stopAlarm()">✅ 解除警报</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import TWEEN from '@tweenjs/tween.js';
+
+        // ================= OneNET 配置区域 (Vercel 版) =================
+        const ONE_NET_CONFIG = {
+            // 鉴权信息保持不变
+            auth: "version=2018-10-31&res=products%2F6XRJ9yhMzR%2Fdevices%2FTest1&et=1793673600&method=md5&sign=oDn3cGTwODPI4esBgMKJwQ%3D%3D",
+            productId: "6XRJ9yhMzR",
+            deviceName: "Test1",
+
+            // 【关键修改】把 https://iot-api.heclouds.com 替换为 /proxy
+            // 这样浏览器会向 Vercel 请求，Vercel 再转发给 OneNET
+            readUrl: '/proxy/thingmodel/query-device-property?product_id=6XRJ9yhMzR&device_name=Test1',
+            writeUrl: '/proxy/thingmodel/set-device-property'
+        };
+        // =============================================================
+
+        const ID_MAP = {
+            temp: "Temp",        
+            hum: "Hum",          
+            aqi: "MQ135",        
+            smoke: "MQ2",        
+            alarm: "Alarm",      
+            d_entry: "Doors1",   
+            d_bed: "Doors2",     
+            d_bath: "Doors3",    
+            ac_liv: "Hvac1",     
+            ac_bed: "Hvac2",     
+            l_liv: "Led",          
+            l_bed: "Led-Bedroom",  
+            l_kit: "Led-Kitchen",  
+            l_pav: "led-Gloriette",
+            w_liv: "Windows1",     
+            w_bed: "Windows2"      
+        };
+        // ========================================================
+
+        let currentEnv = { temp: 24, hum: 45, aqi: 35, smoke: 0 };
+        const INIT_CAM_POS = { x: 10, y: 15, z: 12 };
+        const INIT_TARGET = { x: 0, y: 0, z: 0 };
+        let isCamBusy = false; 
+
+        // 异步获取 OneNET 数据
+        async function fetchOneNetData() {
+            try {
+                const response = await fetch(ONE_NET_CONFIG.readUrl, {
+                    method: 'GET',
+                    headers: { 'Authorization': ONE_NET_CONFIG.auth }
+                });
+                const resJson = await response.json();
+                
+                if (resJson.code === 0 && resJson.data) {
+                    const cloudData = {};
+                    resJson.data.forEach(item => { cloudData[item.identifier] = item.value; });
+
+                    const t = cloudData[ID_MAP.temp] ?? currentEnv.temp;
+                    const h = cloudData[ID_MAP.hum] ?? currentEnv.hum;
+                    const a = cloudData[ID_MAP.aqi] ?? currentEnv.aqi;
+                    const s = cloudData[ID_MAP.smoke] ?? currentEnv.smoke;
+                    
+                    updateSensorData(t, h, a, s, 0);
+
+                    const syncBool = (cloudKey, localKey, action) => {
+                        const val = cloudData[cloudKey];
+                        if (val !== undefined) {
+                            const boolVal = (val == 1 || val == true || val == "true");
+                            if (appState[localKey] !== boolVal) {
+                                action(localKey, boolVal, true); 
+                            }
+                        }
+                    };
+
+                    syncBool(ID_MAP.d_entry, 'd_entry', (id, val) => {
+                        if (val === true && isLocked) toggleLockState(false, true); 
+                        toggleDoor(id, true);
+                    });
+                    syncBool(ID_MAP.d_bed, 'd_bed', (id) => toggleDoor(id, true));
+                    syncBool(ID_MAP.d_bath, 'd_bath', (id) => toggleDoor(id, true));
+
+                    houseData.lights.forEach(l => {
+                        syncBool(ID_MAP[l.id], l.id, (id) => toggleLight(id, true));
+                    });
+
+                    houseData.acs.forEach(ac => {
+                        syncBool(ID_MAP[ac.id], ac.id, (id) => toggleAC(id, 'cooling', true));
+                    });
+                    
+                    syncBool(ID_MAP.w_liv, 'w_liv', (id, val) => toggleWindow(id, val, false, true));
+                    syncBool(ID_MAP.w_bed, 'w_bed', (id, val) => toggleWindow(id, val, false, true));
+
+                    if (cloudData[ID_MAP.alarm] !== undefined) {
+                        const alarmVal = (cloudData[ID_MAP.alarm] == 1 || cloudData[ID_MAP.alarm] == true);
+                        if (alarmVal && !isAlarming) triggerAlarm(true);
+                        else if (!alarmVal && isAlarming) stopAlarm(true);
+                    }
+
+                    document.getElementById('ai-text').innerText = "AI: OneNET 云端已连接";
+                    document.getElementById('ai-orb').style.background = "var(--success-color)";
+                }
+            } catch (error) {
+                console.warn("OneNET 连接失败 (可能由于CORS跨域限制)", error);
+            }
+        }
+
+        async function sendOneNetCommand(localId, value) {
+            let identifier = ID_MAP[localId];
+            if (!identifier && localId === 'lock') identifier = ID_MAP.d_entry; 
+            if (!identifier && localId === 'alarm') identifier = ID_MAP.alarm;
+            
+            if (!identifier) {
+                console.error("未找到对应的 OneNET ID:", localId);
+                return;
+            }
+
+            console.log(`[发送指令] ${identifier} = ${value}`);
+            const payload = {
+                "product_id": ONE_NET_CONFIG.productId,
+                "device_name": ONE_NET_CONFIG.deviceName,
+                "params": { [identifier]: value }
+            };
+
+            try {
+                const response = await fetch(ONE_NET_CONFIG.writeUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': ONE_NET_CONFIG.auth,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (!response.ok) {
+                    aiSpeak("指令发送失败 (HTTP Error)", true);
+                    return;
+                }
+                const res = await response.json();
+                if(res.code !== 0) aiSpeak(`云端拒绝: ${res.msg}`, true);
+
+            } catch (e) { 
+                console.error("指令发送失败:", e); 
+                aiSpeak("浏览器拦截发送请求 (请检查CORS)", true);
+            }
+        }
+
+        window.onload = () => {
+            setTimeout(() => {
+                document.getElementById('loader').style.opacity = '0';
+                setTimeout(() => { 
+                    document.getElementById('loader').style.display = 'none'; 
+                    aiSpeak("系统启动完成，正在连接 OneNET...");
+                    fetchWeather();
+                    setInterval(fetchOneNetData, 3000);
+                }, 800);
+            }, 1500);
+        };
+
+        // ================= 定位逻辑 (城市+区县) =================
+        async function fetchWeather() {
+            const updateWeatherUI = async (lat, lon, city) => {
+                try {
+                    document.getElementById('w-city').innerText = city || "中国 (未知)";
+                    const wUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`;
+                    const wRes = await fetch(wUrl);
+                    const wData = await wRes.json();
+                    document.getElementById('w-temp').innerText = `${wData.current_weather.temperature}°C`;
+                    let icon = isNight ? '🌙' : '☀️';
+                    if(wData.current_weather.weathercode > 3) icon = '☁️';
+                    document.getElementById('w-icon').innerText = icon;
+                } catch(e) { console.warn("Weather fetch failed"); }
+            };
+
+            const useIpLocation = async () => {
+                try {
+                    document.getElementById('w-city').innerText = "IP定位中...";
+                    const res = await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?localityLanguage=zh');
+                    const data = await res.json();
+                    
+                    let cityName = data.city || "";
+                    if(data.locality && !cityName.includes(data.locality)) {
+                        cityName += " " + data.locality;
+                    }
+                    
+                    if(!cityName || cityName.includes("Sydney") || cityName.includes("London")) {
+                        cityName = "中国 " + (data.principalSubdivision || "(网络定位)");
+                    }
+                    
+                    updateWeatherUI(data.latitude, data.longitude, cityName);
+                } catch(e) {
+                    document.getElementById('w-city').innerText = "定位失败(网络)";
+                }
+            };
+
+            if ("geolocation" in navigator) {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => {
+                    controller.abort(); 
+                    useIpLocation(); 
+                }, 2000);
+
+                navigator.geolocation.getCurrentPosition(
+                    async (pos) => {
+                        clearTimeout(timeoutId);
+                        const lat = pos.coords.latitude; 
+                        const lon = pos.coords.longitude;
+                        try {
+                            const res = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=zh`);
+                            const data = await res.json();
+                            
+                            let cityName = data.city || "";
+                            if(data.locality && !cityName.includes(data.locality)) {
+                                cityName += " " + data.locality;
+                            }
+                            if(!cityName) cityName = "本地位置";
+                            
+                            updateWeatherUI(lat, lon, cityName);
+                        } catch(e) {
+                            updateWeatherUI(lat, lon, "GPS位置");
+                        }
+                    },
+                    (err) => { 
+                        clearTimeout(timeoutId);
+                        useIpLocation();
+                    }
+                );
+            } else {
+                useIpLocation();
+            }
+        }
+
+        window.updateSensorData = (temp, hum, aqi, smoke, fire) => {
+            currentEnv = { temp: parseInt(temp), hum: parseInt(hum), aqi: parseInt(aqi), smoke: parseInt(smoke||0) };
+            document.getElementById('val-temp').innerText = `${currentEnv.temp}°C`;
+            document.getElementById('val-hum').innerText = `${currentEnv.hum}%`;
+            const aEl = document.getElementById('val-aqi');
+            aEl.innerText = currentEnv.aqi;
+            aEl.style.color = currentEnv.aqi > 100 ? "var(--danger-color)" : "var(--success-color)";
+            const sEl = document.getElementById('val-smoke');
+            sEl.innerText = `${currentEnv.smoke}`;
+            sEl.style.color = currentEnv.smoke > 200 ? "var(--danger-color)" : "var(--success-color)";
+        }
+
+        let isNight = false; let manualOverride = false;
+        let isLocked = true; let currentPin = ""; const CORRECT_PIN = "1234";
+        let isAlarming = false; let alarmInt;
+
+        window.triggerAlarm = (isSync = false) => {
+            if(isAlarming) return; isAlarming = true;
+            document.getElementById('alarm-overlay').style.display = 'flex';
+            document.getElementById('sys-status').innerText = "危险"; document.getElementById('sys-status').className = "status-badge danger";
+            aiSpeak("警告：检测到异常！", true);
+            alarmInt = setInterval(() => {
+                houseData.lights.forEach(l => {
+                    const obj = sceneObjects.lights[l.id];
+                    obj.light.color.setHex(obj.light.color.getHex()===0xff0000 ? 0xffffff : 0xff0000);
+                    obj.light.intensity = 5;
+                });
+            }, 500);
+            if (!isSync) sendOneNetCommand('alarm', true);
+        };
+        
+        window.stopAlarm = (isSync = false) => {
+            isAlarming = false; clearInterval(alarmInt);
+            document.getElementById('alarm-overlay').style.display = 'none';
+            document.getElementById('sys-status').innerText = "安全"; document.getElementById('sys-status').className = "status-badge safe";
+            houseData.lights.forEach(l => {
+                const obj = sceneObjects.lights[l.id]; obj.light.color.setHex(l.color); obj.light.intensity = appState[l.id] ? l.intensity : 0;
+            });
+            aiSpeak("警报已解除");
+            if (!isSync) sendOneNetCommand('alarm', false);
+        };
+
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('clock-time').innerText = now.toLocaleTimeString('en-GB', { hour:'2-digit', minute:'2-digit', second: '2-digit' });
+            document.getElementById('clock-date').innerText = now.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '.');
+            if (!manualOverride) {
+                const h = now.getHours();
+                const night = (h < 6 || h >= 18); if (isNight !== night) toggleTheme(night);
+            }
+        }
+        setInterval(updateTime, 1000);
+        
+        window.manualToggleTheme = () => { manualOverride = true; toggleTheme(!isNight); };
+        function toggleTheme(night) {
+            isNight = night; const b = document.body; const btn = document.getElementById('theme-btn');
+            if(night) { b.classList.add('night-mode'); btn.innerText='🌙'; } else { b.classList.remove('night-mode'); btn.innerText='☀️'; }
+            update3DLighting(night);
+        }
+
+        // ================= 3D Setup =================
+        const container = document.getElementById('container-3d');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xeef2f3);
+        const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
+        camera.position.set(INIT_CAM_POS.x, INIT_CAM_POS.y, INIT_CAM_POS.z); camera.lookAt(INIT_TARGET.x, INIT_TARGET.y, INIT_TARGET.z);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        renderer.shadowMap.enabled = true; 
+        container.appendChild(renderer.domElement);
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        
+        const ambLight = new THREE.AmbientLight(0xffffff, 0.6); scene.add(ambLight);
+        const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        sunLight.position.set(10, 20, 10); sunLight.castShadow = true; scene.add(sunLight);
+
+        function update3DLighting(night) {
+            if(night) {
+                new TWEEN.Tween(scene.background).to({r:0.02, g:0.02, b:0.03}, 1000).start();
+                new TWEEN.Tween(ambLight).to({intensity: 0.1}, 1000).start();
+            } else {
+                new TWEEN.Tween(scene.background).to({r:0.93, g:0.95, b:0.95}, 1000).start();
+                new TWEEN.Tween(ambLight).to({intensity: 0.6}, 1000).start();
+            }
+        }
+        
+        // 构建房屋 (数据驱动)
+        const WALL_H = 2.4; const THICKNESS = 0.2;
+        const houseData = {
+            walls: [
+                { x: -4, z: -3.5, w: THICKNESS, h: 3, height: WALL_H, y: WALL_H/2 }, 
+                { x: -4, z: 2.5, w: THICKNESS, h: 5, height: WALL_H, y: WALL_H/2 }, 
+                { x: -4, z: -1, w: THICKNESS, h: 2, height: 0.8, y: 0.4 }, 
+                { x: -4, z: -1, w: THICKNESS, h: 2, height: 0.4, y: 2.2 }, 
+                { x: 4, z: -4.25, w: THICKNESS, h: 1.5, height: WALL_H, y: WALL_H/2 },
+                { x: 4, z: 1.5, w: THICKNESS, h: 7, height: WALL_H, y: WALL_H/2 },
+                { x: 4, z: -2.75, w: THICKNESS, h: 1.5, height: 0.8, y: 0.4 },
+                { x: 4, z: -2.75, w: THICKNESS, h: 1.5, height: 0.4, y: 2.2 },
+                { x: -2.9, z: 5, w: 2.2, h: THICKNESS, height: WALL_H, y: WALL_H/2 },
+                { x: 2.0, z: 5, w: 4.0, h: THICKNESS, height: WALL_H, y: WALL_H/2 }, 
+                { x: -0.6, z: 5, w: 1.2, h: THICKNESS, height: WALL_H - 2.0, y: 2.0 + (WALL_H-2.0)/2, isPartial: true },
+                { x: 0, z: -5, w: 8, h: THICKNESS, height: WALL_H, y: WALL_H/2 },
+                { x: 1, z: -3.475, w: THICKNESS, h: 3.05, height: WALL_H, y: WALL_H/2 },
+                { x: 1, z: 1.975, w: THICKNESS, h: 6.05, height: WALL_H, y: WALL_H/2 },
+                { x: 1, z: -1.5, w: THICKNESS, h: 0.9, height: WALL_H - 2.0, y: 2.0 + (WALL_H-2.0)/2, isPartial: true },
+                { x: -1.5, z: -2, w: 5, h: THICKNESS, height: WALL_H, y: WALL_H/2 },
+                { x: -3.7, z: 2, w: 0.6, h: THICKNESS, height: WALL_H, y: WALL_H/2 },
+                { x: -0.8, z: 2, w: 3.6, h: THICKNESS, height: WALL_H, y: WALL_H/2 },
+                { x: -3.0, z: 2, w: 0.8, h: THICKNESS, height: WALL_H - 2.0, y: 2.0 + (WALL_H-2.0)/2, isPartial: true },
+                { x: -1.5, z: 3.5, w: THICKNESS, h: 3, height: WALL_H, y: WALL_H/2 }
+            ],
+            doors: [
+                { id: 'd_entry', name: '大门', x: -0.6, z: 5, w: 1.2, h: 2.0, rot: 0, targetRot: Math.PI/2, hasLock: true },
+                { id: 'd_bed', name: '卧室门', x: 1, z: -1.05, w: 0.9, h: 2.0, rot: Math.PI/2, targetRot: 0, hinge: 'south' }, 
+                { id: 'd_bath', name: '卫生间门', x: -3.0, z: 2, w: 0.8, h: 2.0, rot: 0, targetRot: -Math.PI/2 }
+            ],
+            windows: [
+                { id: 'w_liv', name: '客厅窗', x: -4, y: 1.4, z: -1, w: 0.25, h: 1.2, d: 1.8, rot: 0, dir: 1 },
+                { id: 'w_bed', name: '卧室窗', x: 4, y: 1.4, z: -2.75, w: 0.25, h: 1.2, d: 1.3, rot: 0, dir: -1 }
+            ],
+            acs: [
+                { id: 'ac_liv', name: '客厅空调', x: -3.8, y: 2.0, z: 2, rot: Math.PI/2, w:0.4, d:0.8 },
+                { id: 'ac_bed', name: '卧室空调', x: 3.8, y: 2.0, z: -1, rot: -Math.PI/2, w:0.4, d:0.8 }
+            ],
+            lights: [
+                { id: 'l_liv', name: '客厅灯', x: -1.5, y: 2.2, z: 0, color: 0xffaa00, intensity: 4 },
+                { id: 'l_bed', name: '卧室灯', x: 2.5, y: 2.2, z: 0, color: 0xffddaa, intensity: 3 },
+                { id: 'l_kit', name: '厨房灯', x: -3, y: 2.2, z: -3.5, color: 0xffffff, intensity: 4 },
+                { id: 'l_pav', name: '亭子灯', x: -5, y: 2.2, z: 9, color: 0xffdd88, intensity: 4 }
+            ],
+            furniture: [
+                { type: 'bed', x: 2.5, z: -3, w: 1.8, d: 2, h: 0.5, color: 0x8899aa },
+                { type: 'sofa', x: -3, z: 0, w: 1, d: 2.5, h: 0.7, color: 0xaa7777 }
+            ]
+        };
+
+        const sceneObjects = { doors: {}, lights: {}, furniture: {}, acs: {}, particles: [], windows: {}, lockLED: null };
+        const appState = {};
+
+        const createBox = (w, h, d, x, y, z, color, opacity=1) => {
+            const mat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.5, transparent: opacity<1, opacity: opacity });
+            const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+            mesh.position.set(x, y, z);
+            if(opacity===1) { mesh.castShadow = true; mesh.receiveShadow = true; }
+            return mesh;
+        };
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshStandardMaterial({ color: 0xeae5d9 }));
+        floor.rotation.x = -Math.PI/2; floor.receiveShadow = true; scene.add(floor);
+        
+        // 恢复：地面网格 GridHelper
+        const grid = new THREE.GridHelper(30, 30, 0xaaaaaa, 0xe0e0e0); 
+        grid.position.y = 0.01; 
+        scene.add(grid);
+
+        houseData.walls.forEach(w => scene.add(createBox(w.w, w.height, w.h, w.x, w.y, w.z, 0xffffff)));
+
+        // Doors
+        houseData.doors.forEach(d => {
+            const pivot = new THREE.Group();
+            let px=d.x, pz=d.z; let isVert = Math.abs(d.rot)>0.1;
+            if(!isVert) px -= d.w/2; else { if(d.hinge !== 'south') pz -= d.w/2; }
+            pivot.position.set(px,0,pz); pivot.rotation.y = d.rot;
+            const door = createBox(d.w, d.h, 0.05, d.w/2, d.h/2, 0, 0xC19A6B);
+            if(d.hasLock) {
+                const led = new THREE.Mesh(new THREE.CircleGeometry(0.02, 16), new THREE.MeshBasicMaterial({color:0xff3b30})); 
+                led.position.set(d.w-0.1, d.h/2 + 0.15, 0.07); led.rotation.y=Math.PI/2;
+                sceneObjects.lockLED = led; door.add(led);
+            }
+            pivot.add(door); scene.add(pivot); sceneObjects.doors[d.id] = pivot;
+        });
+
+        // Windows
+        houseData.windows.forEach(w => {
+            const g = new THREE.Group(); g.position.set(w.x, w.y, w.z);
+            const glass = new THREE.Mesh(new THREE.BoxGeometry(0.05, w.h, w.d/2), new THREE.MeshStandardMaterial({color: 0x55aaff, transparent: true, opacity: 0.5}));
+            g.add(glass); scene.add(g);
+            sceneObjects.windows[w.id] = { group: g, glass: glass, maxOffset: (w.d/2) * 0.9 * w.dir };
+        });
+
+        // ACs
+        houseData.acs.forEach(ac => {
+            const g = new THREE.Group(); g.position.set(ac.x, ac.y, ac.z); g.rotation.y = ac.rot;
+            const body = createBox(0.4, 0.3, 0.8, 0, 0, 0, 0xffffff);
+            g.add(body); scene.add(g); sceneObjects.acs[ac.id] = { group: g, isOn: false };
+        });
+
+        // Lights
+        houseData.lights.forEach(l => {
+            const light = new THREE.PointLight(l.color, 0, 6); light.position.set(l.x, l.y, l.z); scene.add(light);
+            const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.1), new THREE.MeshStandardMaterial({color:0xffffff, emissive:0x111111}));
+            lamp.position.copy(light.position); scene.add(lamp);
+            sceneObjects.lights[l.id] = { light, mesh: lamp, maxInt: l.intensity, color: l.color };
+        });
+
+        // Furniture
+        houseData.furniture.forEach(f => scene.add(createBox(f.w,f.h,f.d,f.x,f.h/2,f.z,f.color)));
+
+        // Pavilion
+        const pav = new THREE.Group(); pav.position.set(-5, 0, 9);
+        pav.add(createBox(0.2, 2.5, 0.2, -1, 1.25, -1, 0x8b4513));
+        pav.add(createBox(0.2, 2.5, 0.2, 1, 1.25, 1, 0x8b4513));
+        const roof = new THREE.Mesh(new THREE.ConeGeometry(2, 1, 4), new THREE.MeshStandardMaterial({color: 0x8b0000}));
+        roof.position.y = 3; roof.rotation.y = Math.PI/4; pav.add(roof);
+        scene.add(pav);
+
+        // ================= 交互逻辑 =================
+        window.aiSpeak = (text, alert=false) => {
+            const el = document.getElementById('ai-text'); el.innerText = "AI: " + text;
+            const orb = document.getElementById('ai-orb');
+            orb.style.background = alert ? 'red' : 'var(--accent-color)';
+        };
+
+        window.handleLockAction = () => { if(isLocked) { document.getElementById('pin-modal').style.display = 'flex'; currentPin = ""; updatePinDisplay(); } else { toggleLockState(true); aiSpeak("大门已手动上锁"); } }
+        window.cancelPin = () => { document.getElementById('pin-modal').style.display = 'none'; }
+        window.inputPin = (n) => { if(currentPin.length<4) currentPin+=n; updatePinDisplay(); }
+        function updatePinDisplay() { document.getElementById('pin-display').innerText = "*".repeat(currentPin.length); }
+        window.submitPin = () => { 
+            if(currentPin === CORRECT_PIN) { 
+                toggleLockState(false); 
+                document.getElementById('pin-modal').style.display = 'none'; 
+                aiSpeak("密码正确"); 
+            } else { 
+                aiSpeak("密码错误！", true); 
+                currentPin = ""; updatePinDisplay(); 
+            } 
+        }
+        
+        window.toggleLockState = (locked, isSync = false) => {
+            isLocked = locked; 
+            const badge = document.getElementById('lock-status'); const btn = document.getElementById('btn-lock'); const led = sceneObjects.lockLED;
+            if(isLocked) { 
+                badge.className = "status-badge danger"; badge.innerText = "已上锁"; btn.innerText = "🔒 解锁大门 (Doors1)"; btn.style.color = "var(--danger-color)"; 
+                if(led) led.material.color.setHex(0xff3b30);
+                if(appState['d_entry']) toggleDoor('d_entry', true); 
+            } else { 
+                badge.className = "status-badge safe"; badge.innerText = "已解锁"; btn.innerText = "🔓 锁定大门 (Doors1)"; btn.style.color = "var(--success-color)"; 
+                if(led) led.material.color.setHex(0x34c759); 
+            }
+            if(!isSync) sendOneNetCommand('d_entry', !locked); 
+        };
+
+        async function focusAndReturn(targetPos, offsetMult=1) {
+            if(isCamBusy) return; isCamBusy = true;
+            const camTo = { x: targetPos.x + (targetPos.x>0?3:-3), y: 4, z: targetPos.z + 3 };
+            new TWEEN.Tween(camera.position).to(camTo, 1000).easing(TWEEN.Easing.Cubic.Out).start();
+            new TWEEN.Tween(controls.target).to({x: targetPos.x, y: 1.5, z: targetPos.z}, 1000).easing(TWEEN.Easing.Cubic.Out).start();
+            await new Promise(r => setTimeout(r, 1200));
+            new TWEEN.Tween(camera.position).to(INIT_CAM_POS, 1000).start();
+            new TWEEN.Tween(controls.target).to(INIT_TARGET, 1000).start();
+            setTimeout(() => { isCamBusy = false; }, 1000);
+        }
+
+        window.toggleDoor = (id, isSync = false) => {
+            if(id === 'd_entry' && isLocked && !appState[id]) return aiSpeak("大门已锁，请先解锁", true);
+            const d = houseData.doors.find(x=>x.id===id);
+            if(!isSync) focusAndReturn(d);
+            const obj = sceneObjects.doors[id]; const isOpen = !appState[id];
+            new TWEEN.Tween(obj.rotation).to({y: isOpen ? d.targetRot : d.rot}, 1000).easing(TWEEN.Easing.Back.Out).start();
+            appState[id] = isOpen; updateUI(id); draw2D();
+            if(!isSync) sendOneNetCommand(id, isOpen);
+        };
+
+        window.toggleWindow = (id, forceState, isManual=false, isSync=false) => {
+            const w = houseData.windows.find(x=>x.id===id); const obj = sceneObjects.windows[id];
+            let targetState = (typeof forceState !== 'undefined') ? forceState : !appState[id];
+            if(appState[id] === targetState) return;
+            if(isManual && !isSync) focusAndReturn(w); 
+            new TWEEN.Tween(obj.glass.position).to({z: targetState ? obj.maxOffset : 0}, 1000).easing(TWEEN.Easing.Cubic.Out).start();
+            appState[id] = targetState; updateUI(id); draw2D();
+            if(!isSync) sendOneNetCommand(id, targetState);
+        };
+
+        window.toggleAC = (id, mode, isSync = false) => {
+            const acData = houseData.acs.find(a=>a.id===id);
+            if(!isSync) focusAndReturn(acData); 
+            const ac = sceneObjects.acs[id]; ac.isOn = !ac.isOn; appState[id] = ac.isOn; updateUI(id);
+            const btn = document.getElementById('btn-'+id);
+            if(btn) btn.innerHTML = ac.isOn ? `❄️ ${acData.name} <span class="ac-info">运行中</span>` : `${acData.name} (${ID_MAP[id]})`;
+            if(!isSync) sendOneNetCommand(id, ac.isOn);
+        };
+        
+        window.toggleLight = (id, isSync = false) => { 
+            const lData = houseData.lights.find(l=>l.id===id);
+            if(!isSync && lData.id !== 'l_pav') focusAndReturn(lData, 0.5); 
+            const o = sceneObjects.lights[id]; const on = !appState[id]; 
+            new TWEEN.Tween(o.light).to({intensity:on?o.maxInt:0},500).start(); 
+            new TWEEN.Tween(o.mesh.material.emissive).to(new THREE.Color(on?o.color:0x111111),500).start(); 
+            appState[id] = on; updateUI(id); draw2D();
+            if(!isSync) sendOneNetCommand(id, on);
+        };
+        
+        window.openCCTV = () => { document.getElementById('cctv-modal').style.display = 'flex'; };
+        window.closeCCTV = () => { document.getElementById('cctv-modal').style.display = 'none'; };
+
+        function updateParticles() {
+            houseData.acs.forEach(acData => {
+                const acObj = sceneObjects.acs[acData.id];
+                if(acObj.isOn && Math.random()>0.7) {
+                    const p = new THREE.Mesh(new THREE.BoxGeometry(0.05,0.05,0.05), new THREE.MeshBasicMaterial({color:0xccffff, transparent:true, opacity:0.8}));
+                    const offset = new THREE.Vector3(0.3, -0.2, 0); offset.applyAxisAngle(new THREE.Vector3(0,1,0), acData.rot);
+                    p.position.set(acData.x + offset.x, acData.y + offset.y, acData.z + offset.z);
+                    p.userData = { vel: new THREE.Vector3((Math.random()-0.5)*0.05, -0.05, (Math.random()-0.5)*0.05), life: 60 };
+                    scene.add(p); sceneObjects.particles.push(p);
+                }
+            });
+            for(let i=sceneObjects.particles.length-1; i>=0; i--){ const p = sceneObjects.particles[i]; p.position.add(p.userData.vel); p.userData.life--; p.material.opacity = p.userData.life/60; if(p.userData.life<=0){ scene.remove(p); sceneObjects.particles.splice(i,1); } }
+        }
+
+        const createBtns = (divId, items, funcName) => {
+            const div = document.getElementById(divId);
+            items.forEach(i => {
+                const b = document.createElement('button'); b.id='btn-'+i.id; b.innerText=`${i.name} (${ID_MAP[i.id]})`;
+                b.onclick = () => window[funcName](i.id); div.appendChild(b);
+            });
+        };
+        createBtns('light-controls', houseData.lights, 'toggleLight');
+        createBtns('ac-controls', houseData.acs, 'toggleAC');
+        createBtns('door-controls', houseData.doors, 'toggleDoor'); 
+        window.updateUI = (id) => { const b=document.getElementById('btn-'+id); if(b) b.classList.toggle('active', appState[id]); };
+
+        const ctx = document.getElementById('canvas-2d').getContext('2d');
+        const S=13, CX=130, CY=100; const to2 = (x,z) => ({x:x*S+CX, y:z*S+CY});
+        function draw2D() {
+            ctx.clearRect(0,0,300,400); 
+            houseData.walls.forEach(w => { if(w.isPartial) return; let p=to2(w.x,w.z); ctx.fillStyle='#555'; ctx.fillRect(p.x-w.w*S/2, p.y-w.h*S/2, w.w*S||4, w.h*S||4); });
+            houseData.doors.forEach(d => {
+                let p=to2(d.x, d.z); if(d.hinge==='south') p.y-=d.w/2*S; else if(Math.abs(d.rot)>0.1) p.y-=d.w/2*S; else p.x-=d.w/2*S;
+                let ang = appState[d.id] ? d.targetRot : d.rot; 
+                ctx.strokeStyle = appState[d.id]?'#34c759':'#C19A6B'; ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(p.x+Math.cos(ang)*d.w*S, p.y+Math.sin(ang)*d.w*S); ctx.stroke();
+            });
+            houseData.lights.forEach(l=>{ let p=to2(l.x,l.z); ctx.fillStyle=appState[l.id]?'orange':'#333'; ctx.beginPath(); ctx.arc(p.x,p.y,3,0,6); ctx.fill(); });
+        }
+        
+        function loop(t) { requestAnimationFrame(loop); TWEEN.update(t); updateParticles(); controls.update(); renderer.render(scene, camera); }
+        loop(); draw2D();
+        window.onresize=()=>{camera.aspect=container.clientWidth/container.clientHeight;camera.updateProjectionMatrix();renderer.setSize(container.clientWidth,container.clientHeight);};
+    </script>
+</body>
+</html>
